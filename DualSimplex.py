@@ -179,3 +179,21 @@ class DualSimplexGUI:
         styled_btn(p, "⚡  Solve — Show All Steps",
                    self.solve_steps, SUCCESS, width=23).pack(pady=(6,14), padx=12)
 
+    def _set_viz_buttons_state(self, state):
+        for btn in self._viz_buttons.values():
+            btn.config(state=state)
+
+    def _set_active_btn(self, key):
+        self._active_viz.set(key)
+        for k, btn in self._viz_buttons.items():
+            btn.config(bg=ACCENT if k == key else PANEL2,
+                       fg=TEXT   if k == key else SUBTEXT)
+
+    def _reveal_sidebar(self):
+        """Pack the sidebar the first time a solve succeeds."""
+        if not self.viz_panel.winfo_ismapped():
+            self.viz_panel.pack(side="left", fill="y", ipadx=6, ipady=10)
+
+    def _section(self, parent, text):
+        tk.Label(parent, text=text, bg=PANEL, fg=ACCENT,
+                 font=("Consolas", 10, "bold")).pack(anchor="w", padx=14, pady=(12,4))
