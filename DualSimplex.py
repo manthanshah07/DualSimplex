@@ -445,6 +445,51 @@ class DualSimplexGUI:
             row=6+m, column=0, columnspan=2*n+4, pady=(12,4))
 
 
+    # ── Random example loader ─────────────────────────────────────────────────
+
+    def _load_example(self):
+        if not self.c_entries:
+            messagebox.showinfo("Example", "Generate input fields first.")
+            return
+
+        # Filter examples that fit current n, m
+        fitting = [e for e in EXAMPLES if e["n"] == self.n and e["m"] == self.m]
+        if not fitting:
+            # Generate a random valid example for any n, m
+            ex = self._generate_random_example(self.n, self.m)
+        else:
+            # Pick randomly but avoid repeating last
+            choices = [i for i,e in enumerate(fitting) if i != self._last_ex_idx]
+            if not choices:
+                choices = list(range(len(fitting)))
+            idx = random.choice(choices)
+            self._last_ex_idx = idx
+            ex = fitting[idx]
+
+        # Apply
+        self.obj_var.set(ex["obj"])
+        for j, e in enumerate(self.c_entries):
+            e.delete(0, tk.END); e.insert(0, ex["c"][j])
+        for i in range(self.m):
+            for j, e in enumerate(self.A_entries[i]):
+                e.delete(0, tk.END); e.insert(0, ex["A"][i][j])
+            self.b_entries[i].delete(0, tk.END)
+            self.b_entries[i].insert(0, ex["b"][i])
+            self.sense_vars[i].set(ex["s"][i])
+
+    def _generate_random_example(self, n, m):
+        """Procedurally generate a well-formed random LP example."""
+        obj = random.choice(["Minimize", "Maximize"])
+        c   = [random.randint(1, 8) for _ in range(n)]
+        senses = [random.choice(["≤","≥"]) for _ in range(m)]
+        A, b = [], []
+        for i in range(m):
+            row = [random.randint(1, 6) for _ in range(n)]
+            # make RHS sensible: sum of row * small factor
+            rhs = max(1, int(sum(row) * random.uniform(0.8, 2.5)))
+            A.append(row)
+            b.append(rhs)
+        return dict(n=n, m=m, obj=obj, c=c, A=A, b=b, s=senses)
 
 
     # ═══════════════════════════════════════════════════════════════════════════
