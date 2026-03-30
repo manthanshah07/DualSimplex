@@ -1166,3 +1166,8 @@ class DualSimplexGUI:
         scale.config(command=update_obj)
         update_obj(z_opt)
 
+# ─────────────────────────────────────────────────────────────────────────────
+if __name__ == "__main__":
+    root = tk.Tk()
+    DualSimplexGUI(root)
+    root.mainloop()
