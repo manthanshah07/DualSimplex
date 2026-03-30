@@ -26,6 +26,16 @@ RED      = "#f45e7a"
 WARN     = "#f4d03f"
 
 HL_ROW_BG  = "#2a2000";  HL_ROW_FG  = "#f4d03f"
+HL_COL_BG  = "#001a2a";  HL_COL_FG  = "#5eb8f4"
+HL_CELL_BG = "#3a1500";  HL_CELL_FG = "#ff8c42"
+
+MPL_BG     = "#0f1117"
+MPL_AX     = "#1a1d2e"
+MPL_TEXT   = "#e8eaf6"
+MPL_GRID   = "#2e3357"
+
+SIDEBAR_W  = 200   # px
+
 
 def _lighten(hex_color, amt=30):
     h = hex_color.lstrip("#")
@@ -60,13 +70,64 @@ def make_entry(parent, width=6):
 def _fmt_row(row, b, sense, n):
     terms = " + ".join(f"{row[j]:.4g}·x{j+1}" for j in range(n))
     return f"{terms}  {sense}  {b:.4g}"
+    
+class DualSimplexGUI:
+    def __init__(self, root):
+        self.root = root
+        self.root.title("Dual Simplex Method Solver")
+        self.root.geometry("1600x920")
+        self.root.configure(bg=BG)
+        self.root.resizable(True, True)
 
-HL_COL_BG  = "#001a2a";  HL_COL_FG  = "#5eb8f4"
-HL_CELL_BG = "#3a1500";  HL_CELL_FG = "#ff8c42"
+        self.n = self.m = 0
+        self.c_entries  = []
+        self.A_entries  = []
+        self.b_entries  = []
+        self.sense_vars = []
+        self.obj_var    = tk.StringVar(value="Minimize")
 
-MPL_BG     = "#0f1117"
-MPL_AX     = "#1a1d2e"
-MPL_TEXT   = "#e8eaf6"
-MPL_GRID   = "#2e3357"
+        # state kept after solve for visualizations
+        self._sol_state  = None   # dict filled after a successful solve
+        self._active_viz = tk.StringVar(value="")
+        self._last_ex_idx = -1   # track last example so we don't repeat
 
-SIDEBAR_W  = 200   # px
+        self._build_ui()
+
+    # ═══════════════════════════════════════════════════════════════════════════
+    #  UI LAYOUT
+    # ═══════════════════════════════════════════════════════════════════════════
+
+    def _build_ui(self):
+        # title bar
+        bar = tk.Frame(self.root, bg=PANEL, pady=11)
+        bar.pack(fill="x")
+        tk.Label(bar, text="⬡  DUAL SIMPLEX METHOD SOLVER",
+                 bg=PANEL, fg=ACCENT, font=("Consolas", 16, "bold")).pack(side="left", padx=22)
+        tk.Label(bar, text="Operations Research  •  Mini Project",
+                 bg=PANEL, fg=SUBTEXT, font=("Consolas", 10)).pack(side="right", padx=22)
+
+        body = tk.Frame(self.root, bg=BG)
+        body.pack(fill="both", expand=True, padx=14, pady=10)
+
+        # ── Left input panel ──
+        self.left_panel = tk.Frame(body, bg=PANEL,
+                                   highlightthickness=1, highlightbackground=BORDER)
+        self.left_panel.pack(side="left", fill="y", ipadx=10, ipady=10, padx=(0, 8))
+
+        # ── Centre solution panel ──
+        centre = tk.Frame(body, bg=PANEL,
+                          highlightthickness=1, highlightbackground=BORDER)
+        centre.pack(side="left", fill="both", expand=True, ipadx=10, ipady=10, padx=(0, 8))
+
+        # ── Right visualisation sidebar (hidden until after first solve) ──
+        self.viz_panel = tk.Frame(body, bg=PANEL,
+                                  highlightthickness=1, highlightbackground=BORDER,
+                                  width=SIDEBAR_W)
+        self.viz_panel.pack_propagate(False)
+        # NOTE: intentionally NOT packed here — revealed by _reveal_sidebar()
+
+        self._body = body   # keep ref so we can pack into it later
+
+        self._build_left(self.left_panel)
+        self._build_centre(centre)
+        self._build_viz_sidebar(self.viz_panel)
