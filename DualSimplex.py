@@ -131,3 +131,51 @@ class DualSimplexGUI:
         self._build_left(self.left_panel)
         self._build_centre(centre)
         self._build_viz_sidebar(self.viz_panel)
+
+        # ── Left panel ────────────────────────────────────────────────────────────
+
+    def _build_left(self, p):
+        self._section(p, "STEP 1 — Problem Size")
+        size = tk.Frame(p, bg=PANEL2, highlightthickness=1, highlightbackground=BORDER)
+        size.pack(fill="x", padx=12, pady=4, ipady=8)
+
+        r1 = tk.Frame(size, bg=PANEL2); r1.pack(fill="x", padx=12, pady=3)
+        tk.Label(r1, text="Variables  (x₁, x₂, …):",
+                 bg=PANEL2, fg=TEXT, font=("Consolas", 10)).pack(side="left")
+        self.var_entry = make_entry(r1, width=4); self.var_entry.pack(side="right")
+
+        r2 = tk.Frame(size, bg=PANEL2); r2.pack(fill="x", padx=12, pady=3)
+        tk.Label(r2, text="Constraints:",
+                 bg=PANEL2, fg=TEXT, font=("Consolas", 10)).pack(side="left")
+        self.con_entry = make_entry(r2, width=4); self.con_entry.pack(side="right")
+
+        self._section(p, "Objective Direction")
+        obj_frame = tk.Frame(p, bg=PANEL2, highlightthickness=1, highlightbackground=BORDER)
+        obj_frame.pack(fill="x", padx=12, pady=4, ipady=6)
+        for opt, color in [("Minimize", SUCCESS), ("Maximize", ACCENT2)]:
+            tk.Radiobutton(obj_frame, text=opt, variable=self.obj_var, value=opt,
+                           bg=PANEL2, fg=color, selectcolor=PANEL2,
+                           activebackground=PANEL2, activeforeground=color,
+                           font=("Consolas", 10, "bold"),
+                           indicatoron=1, relief="flat", cursor="hand2"
+                           ).pack(side="left", padx=18, pady=4)
+
+        styled_btn(p, "▶  Generate Input Fields",
+                   self.create_inputs, ACCENT, width=23).pack(pady=(10,4), padx=12)
+
+        # scrollable input area
+        cw = tk.Frame(p, bg=PANEL); cw.pack(fill="both", expand=True, padx=12, pady=4)
+        self.canvas = tk.Canvas(cw, bg=PANEL, highlightthickness=0, width=420)
+        vsb = tk.Scrollbar(cw, orient="vertical", command=self.canvas.yview)
+        self.canvas.configure(yscrollcommand=vsb.set)
+        vsb.pack(side="right", fill="y")
+        self.canvas.pack(side="left", fill="both", expand=True)
+        self.inp_frame = tk.Frame(self.canvas, bg=PANEL)
+        self.canvas.create_window((0,0), window=self.inp_frame, anchor="nw")
+        self.inp_frame.bind("<Configure>",
+                            lambda e: self.canvas.configure(
+                                scrollregion=self.canvas.bbox("all")))
+
+        styled_btn(p, "⚡  Solve — Show All Steps",
+                   self.solve_steps, SUCCESS, width=23).pack(pady=(6,14), padx=12)
+
