@@ -178,6 +178,59 @@ class DualSimplexGUI:
 
         styled_btn(p, "⚡  Solve — Show All Steps",
                    self.solve_steps, SUCCESS, width=23).pack(pady=(6,14), padx=12)
+    # ── Centre panel ──────────────────────────────────────────────────────────
+
+    def _build_centre(self, p):
+        header = tk.Frame(p, bg=PANEL); header.pack(fill="x", padx=12, pady=(12,4))
+        tk.Label(header, text="SOLUTION  &  STEPS",
+                 bg=PANEL, fg=ACCENT, font=("Consolas", 11, "bold")).pack(side="left")
+        styled_btn(header, "🗑  Clear", self._clear,
+                   "#2e3357", width=10, pady=4).pack(side="right")
+
+        legend = tk.Frame(p, bg=PANEL); legend.pack(fill="x", padx=12, pady=(0,4))
+        def swatch(bg, fg, label):
+            f = tk.Frame(legend, bg=PANEL); f.pack(side="left", padx=(0,16))
+            tk.Label(f, text="  ", bg=bg, width=2).pack(side="left")
+            tk.Label(f, text=f" {label}", bg=PANEL, fg=fg,
+                     font=("Consolas", 9)).pack(side="left")
+        swatch(HL_ROW_BG, HL_ROW_FG,  "Pivot row")
+        swatch(HL_COL_BG, HL_COL_FG,  "Pivot column")
+        swatch(HL_CELL_BG,HL_CELL_FG, "Pivot element")
+
+        wrap = tk.Frame(p, bg=ENTRY_BG,
+                        highlightthickness=1, highlightbackground=BORDER)
+        wrap.pack(fill="both", expand=True, padx=12, pady=6)
+
+        self.out = tk.Text(wrap, bg=ENTRY_BG, fg=TEXT,
+                           font=("Consolas", 10), relief="flat", bd=0,
+                           padx=10, pady=8, wrap="none", state="disabled")
+        vsb2 = tk.Scrollbar(wrap, orient="vertical",   command=self.out.yview)
+        hsb2 = tk.Scrollbar(wrap, orient="horizontal", command=self.out.xview)
+        self.out.configure(yscrollcommand=vsb2.set, xscrollcommand=hsb2.set)
+        hsb2.pack(side="bottom", fill="x")
+        vsb2.pack(side="right",  fill="y")
+        self.out.pack(fill="both", expand=True)
+
+        for tag, fg, font in [
+            ("head",    ACCENT,   ("Consolas",11,"bold")),
+            ("iter",    ACCENT2,  ("Consolas",10,"bold")),
+            ("pivot",   ACCENT2,  ("Consolas",10)),
+            ("rowop",   SUBTEXT,  ("Consolas",10)),
+            ("tbl",     "#c5cae9",("Consolas",10)),
+            ("sol",     SUCCESS,  ("Consolas",11,"bold")),
+            ("zval",    ACCENT2,  ("Consolas",12,"bold")),
+            ("err",     RED,      ("Consolas",10,"bold")),
+            ("dim",     SUBTEXT,  ("Consolas",10)),
+            ("convert", WARN,     ("Consolas",10,"bold")),
+            ("convdim", WARN,     ("Consolas",10)),
+        ]:
+            self.out.tag_configure(tag, foreground=fg, font=font)
+
+        self.out.tag_configure("hl_row",  background=HL_ROW_BG,  foreground=HL_ROW_FG,  font=("Consolas",10,"bold"))
+        self.out.tag_configure("hl_col",  background=HL_COL_BG,  foreground=HL_COL_FG,  font=("Consolas",10))
+        self.out.tag_configure("hl_cell", background=HL_CELL_BG, foreground=HL_CELL_FG, font=("Consolas",10,"bold"))
+        self.out.tag_configure("hl_zcol", background=HL_COL_BG,  foreground=HL_COL_FG,  font=("Consolas",10))
+
 # ── Viz sidebar ───────────────────────────────────────────────────────────
 
     def _build_viz_sidebar(self, p):
