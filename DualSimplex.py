@@ -677,6 +677,151 @@ class DualSimplexGUI:
             self._viz_objslider(win, s)
 
 
+    # ═══════════════════════════════════════════════════════════════════════════
+    #  VIZ 1 — FEASIBLE REGION
+    # ═══════════════════════════════════════════════════════════════════════════
+
+    def _make_fig(self, win, figsize=(7,5)):
+        fig = Figure(figsize=figsize, facecolor=MPL_BG)
+        canvas = FigureCanvasTkAgg(fig, master=win)
+        canvas.get_tk_widget().pack(fill="both", expand=True, padx=8, pady=8)
+        return fig, canvas
+
+    def _style_ax(self, ax, title):
+        ax.set_facecolor(MPL_AX)
+        ax.tick_params(colors=MPL_TEXT, labelsize=8)
+        ax.xaxis.label.set_color(MPL_TEXT)
+        ax.yaxis.label.set_color(MPL_TEXT)
+        ax.title.set_color(ACCENT)
+        ax.set_title(title, fontsize=11, fontweight="bold", pad=10)
+        for spine in ax.spines.values():
+            spine.set_edgecolor(MPL_GRID)
+        ax.grid(True, color=MPL_GRID, linewidth=0.5, linestyle="--")
+        ax.set_xlabel("x₁", fontsize=9)
+        ax.set_ylabel("x₂", fontsize=9)
+
+    def _get_plot_bounds(self, s):
+        sol = s["sol"]
+        x1_max = max(10.0, sol[0]*1.8) if sol[0] > 0 else 15.0
+        x2_max = max(10.0, sol[1]*1.8) if sol[1] > 0 else 15.0
+        return x1_max, x2_max
+
+    def _draw_feasible_region(self, ax, s, alpha=0.18):
+        """Shade the feasible region using a fine grid."""
+        A_orig   = s["A_orig"]
+        b_orig   = s["b_orig"]
+        senses   = s["senses"]
+        x1m, x2m = self._get_plot_bounds(s)
+
+        x1g = np.linspace(0, x1m, 400)
+        x2g = np.linspace(0, x2m, 400)
+        X1, X2 = np.meshgrid(x1g, x2g)
+        feasible = np.ones_like(X1, dtype=bool)
+
+        for i in range(len(b_orig)):
+            lhs = A_orig[i,0]*X1 + A_orig[i,1]*X2
+            if senses[i] == "≤":
+                feasible &= (lhs <= b_orig[i] + 1e-9)
+            elif senses[i] == "≥":
+                feasible &= (lhs >= b_orig[i] - 1e-9)
+            else:
+                feasible &= (np.abs(lhs - b_orig[i]) <= 1e-6*(abs(b_orig[i])+1))
+
+        ax.contourf(X1, X2, feasible.astype(float),
+                    levels=[0.5,1.5], colors=[SUCCESS], alpha=alpha)
+
+    def _draw_constraints(self, ax, s):
+        A_orig  = s["A_orig"]
+        b_orig  = s["b_orig"]
+        senses  = s["senses"]
+        x1m, x2m = self._get_plot_bounds(s)
+        x1g = np.linspace(0, x1m*1.1, 400)
+        colors = [ACCENT, ACCENT2, RED, WARN, SUCCESS, "#c084fc"]
+
+        for i in range(len(b_orig)):
+            a1, a2 = A_orig[i,0], A_orig[i,1]
+            bi = b_orig[i]
+            col = colors[i % len(colors)]
+            if abs(a2) > 1e-9:
+                x2_line = (bi - a1*x1g) / a2
+                mask = (x2_line >= -0.5) & (x2_line <= x2m*1.2)
+                if mask.any():
+                    ax.plot(x1g[mask], x2_line[mask], color=col,
+                            linewidth=1.8, label=f"C{i+1}: {senses[i]} {bi:.4g}")
+            elif abs(a1) > 1e-9:
+                xv = bi / a1
+                ax.axvline(xv, color=col, linewidth=1.8,
+                           label=f"C{i+1}: {senses[i]} {bi:.4g}")
+
+    def _viz_feasible(self, win, s):
+        fig, canvas = self._make_fig(win, (7, 5.5))
+        ax = fig.add_subplot(111)
+        self._style_ax(ax, "Feasible Region")
+
+        self._draw_feasible_region(ax, s)
+        self._draw_constraints(ax, s)
+
+        # optimal point
+        sol = s["sol"]
+        ax.scatter([sol[0]], [sol[1]], s=120, color=ACCENT2, zorder=5,
+                   label=f"Optimal ({sol[0]:.3f}, {sol[1]:.3f})")
+        ax.annotate(f"  ({sol[0]:.2f}, {sol[1]:.2f})\n  Z={s['z_orig']:.2f}",
+                    (sol[0], sol[1]), color=ACCENT2, fontsize=8,
+                    xytext=(sol[0]+0.3, sol[1]+0.3))
+
+        x1m, x2m = self._get_plot_bounds(s)
+        ax.set_xlim(0, x1m); ax.set_ylim(0, x2m)
+        ax.legend(fontsize=7, facecolor=PANEL2, edgecolor=BORDER,
+                  labelcolor=TEXT, loc="upper right")
+        fig.tight_layout()
+        canvas.draw()
+
+    # ═══════════════════════════════════════════════════════════════════════════
+    #  VIZ 2 — SIMPLEX PATH
+    # ═══════════════════════════════════════════════════════════════════════════
+
+    def _viz_path(self, win, s):
+        fig, canvas = self._make_fig(win, (7, 5.5))
+        ax = fig.add_subplot(111)
+        self._style_ax(ax, "Simplex Path across Iterations")
+
+        self._draw_feasible_region(ax, s, alpha=0.12)
+        self._draw_constraints(ax, s)
+
+        # Extract x1, x2 at each iteration from basis/tableau history
+        n = s["n"]
+        path_pts = []
+        for tableau, basis in zip(s["tableaux_history"], s["basis_history"]):
+            sol_i = np.zeros(n + s["m"])
+            for idx, bv in enumerate(basis):
+                sol_i[bv] = tableau[idx, -1]
+            path_pts.append((max(0, sol_i[0]), max(0, sol_i[1])))
+
+        xs = [p[0] for p in path_pts]
+        ys = [p[1] for p in path_pts]
+
+        if len(xs) > 1:
+            ax.plot(xs, ys, color=ACCENT2, linewidth=2,
+                    linestyle="--", zorder=3, alpha=0.8)
+            for i, (x, y) in enumerate(zip(xs, ys)):
+                label = "Start" if i == 0 else f"Iter {i}"
+                col   = SUCCESS if i == len(xs)-1 else ACCENT
+                ax.scatter([x], [y], s=90, color=col, zorder=5)
+                ax.annotate(f"  {label}\n  ({x:.2f},{y:.2f})",
+                            (x, y), color=col, fontsize=7,
+                            xytext=(x+0.2, y+0.2))
+        else:
+            ax.scatter(xs, ys, s=120, color=SUCCESS, zorder=5)
+            ax.annotate("  Optimal\n  (already feasible)",
+                        (xs[0], ys[0]), color=SUCCESS, fontsize=8)
+
+        x1m, x2m = self._get_plot_bounds(s)
+        ax.set_xlim(0, x1m); ax.set_ylim(0, x2m)
+        ax.legend(fontsize=7, facecolor=PANEL2, edgecolor=BORDER,
+                  labelcolor=TEXT, loc="upper right")
+        fig.tight_layout()
+        canvas.draw()
+
 
     # ═══════════════════════════════════════════════════════════════════════════
     #  VIZ 3 — TABLEAU HEATMAP
