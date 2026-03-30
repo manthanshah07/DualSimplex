@@ -443,3 +443,135 @@ class DualSimplexGUI:
         styled_btn(f, "📋  Random Example", self._load_example,
                    "#2e3357", width=18, pady=4).grid(
             row=6+m, column=0, columnspan=2*n+4, pady=(12,4))
+
+
+
+
+    # ═══════════════════════════════════════════════════════════════════════════
+    #  OUTPUT HELPERS
+    # ═══════════════════════════════════════════════════════════════════════════
+
+    def _clear(self):
+        self.out.configure(state="normal")
+        self.out.delete("1.0", tk.END)
+        self.out.configure(state="disabled")
+
+    def put(self, text, tag=""):
+        self.out.configure(state="normal")
+        self.out.insert(tk.END, text+"\n", tag if tag else ())
+        self.out.configure(state="disabled")
+        self.out.see(tk.END)
+
+    def fmt_table(self, tableau, basis, n, z_row,
+                  pivot_row=-1, pivot_col=-1, ratios=None):
+        self.out.configure(state="normal")
+        total = tableau.shape[1] - 1
+
+        hdr = f"{'Basic':<9}│"
+        for j in range(total):
+            lbl = f"x{j+1}" if j < n else f"s{j-n+1}"
+            hdr += f"{lbl:>8}"
+        hdr += "  │" + f"{'RHS':>9}"
+        div = "─" * len(hdr)
+
+        self.out.insert(tk.END, hdr+"\n", "tbl")
+        self.out.insert(tk.END, div+"\n", "tbl")
+
+        self.out.insert(tk.END, f"{'Z':<9}│", "tbl")
+        for j in range(total):
+            tag = "hl_zcol" if j == pivot_col else "tbl"
+            self.out.insert(tk.END, f"{z_row[j]:8.3f}", tag)
+        self.out.insert(tk.END, "  │"+f"{z_row[-1]:9.3f}\n", "tbl")
+        self.out.insert(tk.END, div+"\n", "tbl")
+
+        for i, row in enumerate(tableau):
+            bv  = basis[i]
+            lbl = f"x{bv+1}" if bv < n else f"s{bv-n+1}"
+            ipr = (i == pivot_row)
+            rt  = "hl_row" if ipr else "tbl"
+            self.out.insert(tk.END, f"{lbl:<9}│", rt)
+            for j in range(total):
+                if ipr and j == pivot_col: tag = "hl_cell"
+                elif ipr:                  tag = "hl_row"
+                elif j == pivot_col:       tag = "hl_col"
+                else:                      tag = "tbl"
+                self.out.insert(tk.END, f"{row[j]:8.3f}", tag)
+            self.out.insert(tk.END, "  │"+f"{row[-1]:9.3f}\n", rt)
+
+        self.out.insert(tk.END, div+"\n", "tbl")
+
+        if ratios is not None:
+            self.out.insert(tk.END, f"{'Ratio':<9}│", "tbl")
+            for j in range(len(ratios)):
+                txt = "    ∞   " if ratios[j]==np.inf else f"{ratios[j]:8.3f}"
+                self.out.insert(tk.END, txt, "hl_col" if j==pivot_col else "tbl")
+            self.out.insert(tk.END, "\n")
+            self.out.insert(tk.END, div+"\n", "tbl")
+
+        self.out.configure(state="disabled")
+        self.out.see(tk.END)
+
+    # ═══════════════════════════════════════════════════════════════════════════
+    #  CONVERSION
+    # ═══════════════════════════════════════════════════════════════════════════
+
+    def _convert_to_standard(self, c_orig, A_orig, b_orig, senses, obj_dir):
+        log = []
+        n   = len(c_orig)
+        c   = c_orig.copy()
+        A   = [row.copy() for row in A_orig]
+        b   = b_orig.copy()
+        sns = list(senses)
+
+        log.append(("─"*68, "convdim"))
+        log.append(("  STANDARD FORM CONVERSION", "convert"))
+        log.append(("─"*68, "convdim"))
+
+        if obj_dir == "Maximize":
+            log.append(("", ""))
+            log.append(("  Objective: MAXIMIZE → convert to MINIMIZE", "convert"))
+            log.append(("  Strategy : Multiply objective coefficients by −1", "convdim"))
+            log.append(("           : Max Z = c·x  ≡  Min Z' = −c·x", "convdim"))
+            log.append(("  Original c = [" + ", ".join(f"{v:.4g}" for v in c) + "]", "convdim"))
+            c = -c
+            log.append(("  Negated  c = [" + ", ".join(f"{v:.4g}" for v in c) + "]", "convdim"))
+            log.append(("  ✔ Objective converted.", "convert"))
+        else:
+            log.append(("", ""))
+            log.append(("  Objective: MINIMIZE — no conversion needed.", "convdim"))
+
+        log.append(("", ""))
+        log.append(("  Constraints: converting each to  ≥  form", "convert"))
+        log.append(("─"*40, "convdim"))
+
+        new_A, new_b, new_sns = [], [], []
+        for i, (row, bi, sense) in enumerate(zip(A, b, sns)):
+            label = f"  R{i+1}:"
+            if sense == "≥":
+                log.append((f"{label}  already  ≥  — no change.", "convdim"))
+                new_A.append(row); new_b.append(bi); new_sns.append("≥")
+            elif sense == "≤":
+                log.append((f"{label}  ≤  → multiply both sides by −1", "convdim"))
+                log.append((f"       Original: {_fmt_row(row, bi, '≤', n)}", "convdim"))
+                fr = [-v for v in row]; fb = -bi
+                log.append((f"       Flipped : {_fmt_row(fr, fb, '≥', n)}", "convdim"))
+                new_A.append(fr); new_b.append(fb); new_sns.append("≥")
+            elif sense == "=":
+                log.append((f"{label}  =  → split into two  ≥  constraints", "convdim"))
+                log.append((f"       Original: {_fmt_row(row, bi, '=', n)}", "convdim"))
+                log.append((f"       Split 1 : {_fmt_row(row, bi, '≥', n)}", "convdim"))
+                fr = [-v for v in row]; fb = -bi
+                log.append((f"       Split 2 : {_fmt_row(fr, fb, '≥', n)}", "convdim"))
+                new_A.append(row);  new_b.append(bi); new_sns.append("≥")
+                new_A.append(fr);   new_b.append(fb); new_sns.append("≥")
+
+        if any(s in ("≤","=") for s in sns):
+            log.append(("", ""))
+            log.append(("  ✔ All constraints now in  ≥  form.", "convert"))
+        else:
+            log.append(("  ✔ All constraints already in  ≥  form.", "convert"))
+
+        log.append(("─"*68, "convdim"))
+        log.append(("", ""))
+
+        return c, np.array(new_A, dtype=float), np.array(new_b, dtype=float), log
