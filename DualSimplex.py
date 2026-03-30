@@ -621,6 +621,168 @@ class DualSimplexGUI:
 
         return c, np.array(new_A, dtype=float), np.array(new_b, dtype=float), log
 
+    # ═══════════════════════════════════════════════════════════════════════════
+    #  SOLVER
+    # ═══════════════════════════════════════════════════════════════════════════
+
+    def solve_steps(self):
+        self._clear()
+        self._sol_state = None
+        self._set_viz_buttons_state("disabled")
+
+        try:
+            c_orig = np.array([float(e.get()) for e in self.c_entries])
+            A_orig = [[float(e.get()) for e in row] for row in self.A_entries]
+            b_orig = np.array([float(e.get()) for e in self.b_entries])
+            senses = [sv.get() for sv in self.sense_vars]
+        except ValueError:
+            self.put("⚠  Fill ALL fields with numbers before solving.", "err")
+            return
+
+        obj_dir = self.obj_var.get()
+        n_orig  = self.n
+
+        self.put("━"*68, "head")
+        self.put("  DUAL SIMPLEX METHOD — STEP BY STEP SOLUTION", "head")
+        self.put("━"*68, "head")
+        self.put(f"\n  ORIGINAL PROBLEM  ({obj_dir} Z)", "head")
+
+        obj_str = "  " + obj_dir + " Z = " + " + ".join(
+            f"{c_orig[j]:.4g}·x{j+1}" for j in range(n_orig))
+        self.put(obj_str, "dim")
+        self.put("  Subject to:", "dim")
+        for i in range(self.m):
+            self.put("    " + f"R{i+1}: " +
+                     _fmt_row(A_orig[i], b_orig[i], senses[i], n_orig), "dim")
+        self.put("", "")
+
+        c, A, b, conv_log = self._convert_to_standard(
+            c_orig, A_orig, b_orig, senses, obj_dir)
+        for msg, tag in conv_log:
+            self.put(msg, tag)
+
+        m, n = A.shape
+        self.put(f"  Variables: {n}    Constraints (after conversion): {m}", "dim")
+        self.put("  Minimise Z' = " +
+                 " + ".join(f"{c[j]:.4g}·x{j+1}" for j in range(n)), "dim")
+
+        tableau = np.hstack((-A, np.eye(m), (-b).reshape(-1,1)))
+        z_row   = np.hstack((-c, np.zeros(m), 0.0))
+        basis   = list(range(n, n+m))
+
+        self.put("\n  Initial Tableau (after conversion):\n", "head")
+        self.fmt_table(tableau, basis, n, z_row)
+
+        # save snapshots for heatmap / path
+        tableaux_history = [tableau.copy()]
+        z_row_history    = [z_row.copy()]
+        basis_history    = [basis.copy()]
+
+        itr = 0
+        while np.any(tableau[:, -1] < -1e-9):
+            itr += 1
+            if itr > 50:
+                self.put("\n⚠  Max iterations reached.", "err"); return
+
+            self.put(f"\n{'━'*68}", "iter")
+            self.put(f"  ITERATION {itr}", "iter")
+            self.put(f"{'━'*68}", "iter")
+
+            pr = int(np.argmin(tableau[:, -1]))
+            self.put(f"\n  ▸ Most negative RHS → Pivot Row = R{pr+1}"
+                     f"  (value = {tableau[pr,-1]:.3f})", "pivot")
+
+            ratios = []
+            for j in range(tableau.shape[1]-1):
+                if tableau[pr, j] < -1e-9:
+                    ratio = z_row[j] / tableau[pr, j]
+                    ratios.append(ratio if ratio > 1e-9 else np.inf)
+                else:
+                    ratios.append(np.inf)
+
+            if all(r == np.inf for r in ratios):
+                self.put("\n  ✗  No valid pivot — Problem is INFEASIBLE.", "err"); return
+
+            pc    = int(np.argmin(ratios))
+            pivot = tableau[pr, pc]
+            clbl  = f"x{pc+1}" if pc < n else f"s{pc-n+1}"
+
+            self.put(f"  ▸ Min-ratio test  →  Pivot Col = {clbl}  (col {pc+1})", "pivot")
+            self.put(f"  ▸ Pivot Element   =  {pivot:.4f}", "pivot")
+            self.put("\n  Tableau with pivot highlighted:\n", "dim")
+            self.fmt_table(tableau, basis, n, z_row,
+                           pivot_row=pr, pivot_col=pc, ratios=ratios)
+
+            self.put("\n  Row Operations:", "dim")
+            self.put(f"    R{pr+1}  ←  R{pr+1} ÷ ({pivot:.4f})", "rowop")
+            tableau[pr] /= pivot
+            z_row -= z_row[pc] * tableau[pr]
+
+            for i in range(m):
+                if i != pr:
+                    f_ = tableau[i, pc]
+                    if abs(f_) > 1e-12:
+                        self.put(f"    R{i+1}  ←  R{i+1} − ({f_:.4f}) × R{pr+1}", "rowop")
+                        tableau[i] -= f_ * tableau[pr]
+
+            basis[pr] = pc
+            blbl = ", ".join(f"x{b+1}" if b < n else f"s{b-n+1}" for b in basis)
+            self.put(f"\n  Updated Basis: [{blbl}]", "dim")
+            self.put("\n  Tableau after pivot:\n", "dim")
+            self.fmt_table(tableau, basis, n, z_row)
+
+            tableaux_history.append(tableau.copy())
+            z_row_history.append(z_row.copy())
+            basis_history.append(basis.copy())
+
+        # ── Optimal ──
+        self.put(f"\n{'━'*68}", "sol")
+        self.put("  ✔  OPTIMAL SOLUTION FOUND", "sol")
+        self.put(f"{'━'*68}\n", "sol")
+
+        sol = np.zeros(n + m)
+        for idx, bv in enumerate(basis):
+            sol[bv] = tableau[idx, -1]
+        for i in range(n):
+            self.put(f"    x{i+1}  =  {sol[i]:.4f}", "sol")
+
+        z_prime = np.dot(c, sol[:n])
+        z_orig  = -z_prime if obj_dir == "Maximize" else z_prime
+        obj_lbl = "Z (max)" if obj_dir == "Maximize" else "Z (min)"
+
+        if obj_dir == "Maximize":
+            self.put(f"\n    Z' (min, converted)  =  {z_prime:.4f}", "dim")
+            self.put(f"    {obj_lbl}  =  −Z'  =  {z_orig:.4f}", "zval")
+        else:
+            self.put(f"\n    {obj_lbl}  =  {z_orig:.4f}", "zval")
+        self.put("")
+
+        # ── Store state for visualizations ──
+        self._sol_state = dict(
+            n=n, m=m, n_orig=n_orig,
+            c=c, c_orig=c_orig,
+            A=A, A_orig=np.array(A_orig, dtype=float),
+            b=b, b_orig=b_orig,
+            senses=senses,
+            obj_dir=obj_dir,
+            sol=sol,
+            z_orig=z_orig,
+            basis=basis,
+            tableau=tableau,
+            z_row=z_row,
+            tableaux_history=tableaux_history,
+            z_row_history=z_row_history,
+            basis_history=basis_history,
+        )
+
+        # reveal & unlock sidebar
+        self._reveal_sidebar()
+        self._set_viz_buttons_state("normal")
+        # reset any previously active button highlight for the new solve
+        self._active_viz.set("")
+        for btn in self._viz_buttons.values():
+            btn.config(bg=PANEL2, fg=SUBTEXT)
+        self._viz_hint.config(text="Click a view\nto explore", fg=SUCCESS)
 
     
     # ═══════════════════════════════════════════════════════════════════════════
