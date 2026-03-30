@@ -178,6 +178,43 @@ class DualSimplexGUI:
 
         styled_btn(p, "⚡  Solve — Show All Steps",
                    self.solve_steps, SUCCESS, width=23).pack(pady=(6,14), padx=12)
+# ── Viz sidebar ───────────────────────────────────────────────────────────
+
+    def _build_viz_sidebar(self, p):
+        tk.Label(p, text="VISUALIZATIONS", bg=PANEL, fg=ACCENT,
+                 font=("Consolas", 9, "bold")).pack(anchor="w", padx=10, pady=(14,8))
+
+        self._viz_buttons = {}
+        viz_items = [
+            ("feasible",   "📐  Feasible Region"),
+            ("path",       "🔀  Simplex Path"),
+            ("heatmap",    "🌡  Tableau Heatmap"),
+            ("inspector",  "🔍  Constraint Info"),
+            ("objslider",  "🎚  Objective Slider"),
+        ]
+
+        for key, label in viz_items:
+            btn = tk.Button(p, text=label, bg=PANEL2, fg=SUBTEXT,
+                            font=("Consolas", 9), relief="flat", bd=0,
+                            cursor="hand2", anchor="w", padx=10, pady=8,
+                            width=22,
+                            command=lambda k=key: self._show_viz(k))
+            btn.pack(fill="x", padx=8, pady=2)
+            btn.bind("<Enter>", lambda e, b=btn: b.config(bg=BORDER))
+            btn.bind("<Leave>", lambda e, b=btn, k=key: b.config(
+                bg=ACCENT if self._active_viz.get()==k else PANEL2))
+            self._viz_buttons[key] = btn
+
+        tk.Frame(p, bg=BORDER, height=1).pack(fill="x", padx=8, pady=10)
+
+        # placeholder label
+        self._viz_hint = tk.Label(p, text="Solve a problem\nto unlock\nvisualizations",
+                                  bg=PANEL, fg=SUBTEXT,
+                                  font=("Consolas", 9), justify="center")
+        self._viz_hint.pack(pady=20)
+
+        # disable all buttons initially
+        self._set_viz_buttons_state("disabled")
 
     def _set_viz_buttons_state(self, state):
         for btn in self._viz_buttons.values():
