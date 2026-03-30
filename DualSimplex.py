@@ -620,6 +620,9 @@ class DualSimplexGUI:
         log.append(("", ""))
 
         return c, np.array(new_A, dtype=float), np.array(new_b, dtype=float), log
+
+
+    
     # ═══════════════════════════════════════════════════════════════════════════
     #  VISUALIZATION DISPATCHER
     # ═══════════════════════════════════════════════════════════════════════════
@@ -672,3 +675,187 @@ class DualSimplexGUI:
             win.title("Objective Function Slider")
             win.geometry("760x640")
             self._viz_objslider(win, s)
+
+
+
+    # ═══════════════════════════════════════════════════════════════════════════
+    #  VIZ 3 — TABLEAU HEATMAP
+    # ═══════════════════════════════════════════════════════════════════════════
+
+    def _viz_heatmap(self, win, s):
+        th = s["tableaux_history"]
+        zh = s["z_row_history"]
+        bh = s["basis_history"]
+        n  = s["n"]
+        m  = s["m"]
+
+        # controls
+        ctrl = tk.Frame(win, bg=MPL_BG)
+        ctrl.pack(fill="x", padx=10, pady=6)
+        tk.Label(ctrl, text="Iteration:", bg=MPL_BG, fg=TEXT,
+                 font=("Consolas", 10)).pack(side="left", padx=6)
+        itr_var = tk.IntVar(value=0)
+        scale = tk.Scale(ctrl, from_=0, to=len(th)-1,
+                         variable=itr_var, orient="horizontal",
+                         bg=MPL_BG, fg=TEXT, highlightthickness=0,
+                         troughcolor=PANEL2, activebackground=ACCENT,
+                         length=300)
+        scale.pack(side="left", padx=6)
+
+        fig, canvas = self._make_fig(win, (8, 5))
+        ax = fig.add_subplot(111)
+
+        def draw(idx):
+            ax.clear()
+            tableau = th[idx]
+            z_row   = zh[idx]
+            basis   = bh[idx]
+            total   = tableau.shape[1] - 1
+
+            full = np.vstack([z_row[:-1], tableau[:, :-1]])
+            im = ax.imshow(full, aspect="auto", cmap="RdYlGn",
+                           interpolation="nearest")
+
+            col_labels = [f"x{j+1}" if j < n else f"s{j-n+1}"
+                          for j in range(total)]
+            row_labels = ["Z"] + [f"x{bv+1}" if bv < n else f"s{bv-n+1}"
+                                   for bv in basis]
+
+            ax.set_xticks(range(total));  ax.set_xticklabels(col_labels, color=TEXT, fontsize=8)
+            ax.set_yticks(range(m+1));    ax.set_yticklabels(row_labels, color=TEXT, fontsize=8)
+
+            for r in range(m+1):
+                for c2 in range(total):
+                    val = full[r, c2]
+                    ax.text(c2, r, f"{val:.2f}", ha="center", va="center",
+                            fontsize=7, color="black" if -2<val<2 else "white")
+
+            ttl = "Initial Tableau" if idx == 0 else f"After Iteration {idx}"
+            ax.set_title(ttl, color=ACCENT, fontsize=11, fontweight="bold")
+            ax.set_facecolor(MPL_AX)
+            fig.tight_layout()
+            canvas.draw()
+
+        scale.config(command=lambda v: draw(int(v)))
+        draw(0)
+
+    # ═══════════════════════════════════════════════════════════════════════════
+    #  VIZ 4 — CONSTRAINT INSPECTOR
+    # ═══════════════════════════════════════════════════════════════════════════
+
+    def _viz_inspector(self, win, s):
+        A_orig = s["A_orig"]
+        b_orig = s["b_orig"]
+        senses = s["senses"]
+        sol    = s["sol"]
+        n      = s["n_orig"]
+        m_orig = len(b_orig)
+
+        tk.Label(win, text="CONSTRAINT INSPECTOR", bg=MPL_BG, fg=ACCENT,
+                 font=("Consolas", 12, "bold")).pack(pady=(14,6))
+        tk.Label(win, text="Check which constraints are binding at the optimal solution",
+                 bg=MPL_BG, fg=SUBTEXT, font=("Consolas", 9)).pack(pady=(0,10))
+
+        frame = tk.Frame(win, bg=MPL_BG)
+        frame.pack(fill="both", expand=True, padx=20, pady=6)
+
+        COLORS = [ACCENT, ACCENT2, RED, WARN, SUCCESS, "#c084fc"]
+        for i in range(m_orig):
+            a_row = A_orig[i]
+            bi    = b_orig[i]
+            sense = senses[i]
+            lhs   = sum(a_row[j]*sol[j] for j in range(n))
+            slack = lhs - bi
+            binding = abs(slack) < 1e-6
+
+            row_bg = "#1e2840" if i%2==0 else "#232640"
+            rf = tk.Frame(frame, bg=row_bg, pady=6, padx=10,
+                          highlightthickness=1, highlightbackground=BORDER)
+            rf.pack(fill="x", pady=3)
+
+            col = COLORS[i % len(COLORS)]
+            tk.Label(rf, text=f"C{i+1}", bg=col, fg="#000",
+                     font=("Consolas", 10, "bold"),
+                     width=4, pady=4).pack(side="left", padx=(0,10))
+
+            expr = " + ".join(f"{a_row[j]:.4g}·x{j+1}" for j in range(n))
+            tk.Label(rf, text=f"{expr}  {sense}  {bi:.4g}",
+                     bg=row_bg, fg=TEXT, font=("Consolas", 10)).pack(side="left")
+
+            status_col  = SUCCESS if binding else ACCENT2
+            status_text = "BINDING ✔" if binding else f"slack = {slack:.4f}"
+            tk.Label(rf, text=status_text, bg=row_bg, fg=status_col,
+                     font=("Consolas", 9, "bold")).pack(side="right", padx=10)
+
+        # summary
+        n_binding = sum(
+            1 for i in range(m_orig)
+            if abs(sum(A_orig[i,j]*sol[j] for j in range(n)) - b_orig[i]) < 1e-6
+        )
+        tk.Label(win,
+                 text=f"{n_binding} of {m_orig} constraints are binding at the optimal point.",
+                 bg=MPL_BG, fg=SUCCESS, font=("Consolas", 10, "bold")).pack(pady=12)
+
+    # ═══════════════════════════════════════════════════════════════════════════
+    #  VIZ 5 — OBJECTIVE SLIDER
+    # ═══════════════════════════════════════════════════════════════════════════
+
+    def _viz_objslider(self, win, s):
+        c_orig  = s["c_orig"]
+        obj_dir = s["obj_dir"]
+        sol     = s["sol"]
+        z_opt   = s["z_orig"]
+
+        fig, canvas = self._make_fig(win, (7, 5))
+        ax = fig.add_subplot(111)
+        self._style_ax(ax, f"Objective Line — {obj_dir}  Z = {c_orig[0]:.4g}·x₁ + {c_orig[1]:.4g}·x₂")
+
+        self._draw_feasible_region(ax, s, alpha=0.15)
+        self._draw_constraints(ax, s)
+
+        x1m, x2m = self._get_plot_bounds(s)
+        ax.set_xlim(0, x1m); ax.set_ylim(0, x2m)
+
+        x1g = np.linspace(0, x1m*1.1, 400)
+        [obj_line] = ax.plot([], [], color=WARN, linewidth=2.5,
+                             linestyle="-", label="Objective line", zorder=4)
+        opt_pt = ax.scatter([sol[0]], [sol[1]], s=140, color=ACCENT2,
+                            zorder=6, label=f"Optimal ({sol[0]:.2f},{sol[1]:.2f})")
+        z_text = ax.text(0.02, 0.95, "", transform=ax.transAxes,
+                         color=WARN, fontsize=9, va="top",
+                         bbox=dict(boxstyle="round,pad=0.3", facecolor=PANEL2, alpha=0.8))
+
+        ax.legend(fontsize=7, facecolor=PANEL2, edgecolor=BORDER,
+                  labelcolor=TEXT, loc="upper right")
+        fig.tight_layout()
+
+        # slider
+        ctrl = tk.Frame(win, bg=MPL_BG)
+        ctrl.pack(fill="x", padx=10, pady=4)
+        tk.Label(ctrl, text="Z value:", bg=MPL_BG, fg=TEXT,
+                 font=("Consolas", 10)).pack(side="left", padx=6)
+
+        z_min = min(0, z_opt*0.5) if z_opt > 0 else z_opt*1.5
+        z_max = max(z_opt*2.0, z_opt+10)
+        z_var = tk.DoubleVar(value=z_opt)
+        scale = tk.Scale(ctrl, from_=z_min, to=z_max,
+                         variable=z_var, orient="horizontal",
+                         resolution=(z_max-z_min)/200,
+                         bg=MPL_BG, fg=TEXT, highlightthickness=0,
+                         troughcolor=PANEL2, activebackground=WARN,
+                         length=400)
+        scale.pack(side="left", padx=6)
+
+        def update_obj(val):
+            z = float(val)
+            c1, c2 = c_orig[0], c_orig[1]
+            if abs(c2) > 1e-9:
+                x2_line = (z - c1*x1g) / c2
+                mask = (x2_line >= 0) & (x2_line <= x2m*1.2)
+                obj_line.set_data(x1g[mask], x2_line[mask])
+            z_text.set_text(f"Z = {z:.2f}  (optimal = {z_opt:.2f})")
+            canvas.draw_idle()
+
+        scale.config(command=update_obj)
+        update_obj(z_opt)
+
