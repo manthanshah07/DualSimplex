@@ -620,3 +620,55 @@ class DualSimplexGUI:
         log.append(("", ""))
 
         return c, np.array(new_A, dtype=float), np.array(new_b, dtype=float), log
+    # ═══════════════════════════════════════════════════════════════════════════
+    #  VISUALIZATION DISPATCHER
+    # ═══════════════════════════════════════════════════════════════════════════
+
+    def _show_viz(self, key):
+        if self._sol_state is None:
+            return
+        self._set_active_btn(key)
+
+        s   = self._sol_state
+        n   = s["n_orig"]
+        is2 = (n == 2)
+
+        graph_views = {"feasible", "path", "objslider"}
+        if key in graph_views and not is2:
+            messagebox.showinfo("Graph View",
+                "Graph visualizations are only available for 2-variable problems.\n"
+                "Your problem has more than 2 variables.")
+            return
+
+        win = tk.Toplevel(self.root)
+        win.configure(bg=MPL_BG)
+        win.resizable(True, True)
+
+        # When the window closes, un-highlight the button
+        def _on_close():
+            if self._active_viz.get() == key:
+                self._active_viz.set("")
+                self._viz_buttons[key].config(bg=PANEL2, fg=SUBTEXT)
+            win.destroy()
+        win.protocol("WM_DELETE_WINDOW", _on_close)
+
+        if key == "feasible":
+            win.title("Feasible Region")
+            win.geometry("720x600")
+            self._viz_feasible(win, s)
+        elif key == "path":
+            win.title("Simplex Path")
+            win.geometry("720x600")
+            self._viz_path(win, s)
+        elif key == "heatmap":
+            win.title("Tableau Heatmap")
+            win.geometry("820x560")
+            self._viz_heatmap(win, s)
+        elif key == "inspector":
+            win.title("Constraint Inspector")
+            win.geometry("560x480")
+            self._viz_inspector(win, s)
+        elif key == "objslider":
+            win.title("Objective Function Slider")
+            win.geometry("760x640")
+            self._viz_objslider(win, s)
