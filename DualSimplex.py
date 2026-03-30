@@ -287,3 +287,93 @@ class DualSimplexGUI:
     def _section(self, parent, text):
         tk.Label(parent, text=text, bg=PANEL, fg=ACCENT,
                  font=("Consolas", 10, "bold")).pack(anchor="w", padx=14, pady=(12,4))
+
+    # ═══════════════════════════════════════════════════════════════════════════
+    #  INPUT GENERATION
+    # ═══════════════════════════════════════════════════════════════════════════
+
+    def create_inputs(self):
+        for w in self.inp_frame.winfo_children():
+            w.destroy()
+        self.c_entries  = []
+        self.A_entries  = []
+        self.b_entries  = []
+        self.sense_vars = []
+
+        try:
+            self.n = int(self.var_entry.get())
+            self.m = int(self.con_entry.get())
+            assert 1 <= self.n <= 10 and 1 <= self.m <= 10
+        except Exception:
+            messagebox.showerror("Error", "Enter integers 1–10 for both fields.")
+            return
+
+        n, m = self.n, self.m
+        f    = self.inp_frame
+        obj_dir = self.obj_var.get()
+
+        tk.Label(f, text=f"STEP 2 — Objective  ({obj_dir}  Z = c·x)",
+                 bg=PANEL, fg=ACCENT, font=("Consolas", 9, "bold")).grid(
+            row=0, column=0, columnspan=2*n+4, sticky="w", padx=4, pady=(10,2))
+
+        tk.Label(f, text=f"{obj_dir[:3].upper()} Z =",
+                 bg=PANEL, fg=SUBTEXT, font=("Consolas", 10)).grid(row=1, column=0, padx=4)
+
+        for j in range(n):
+            col  = 1 + j*2
+            cell = tk.Frame(f, bg=PANEL); cell.grid(row=1, column=col, padx=2, pady=3)
+            e = make_entry(cell, width=5); e.pack()
+            tk.Label(cell, text=f"x{j+1}", bg=PANEL, fg=SUBTEXT,
+                     font=("Consolas", 8)).pack()
+            self.c_entries.append(e)
+            if j < n-1:
+                tk.Label(f, text="+", bg=PANEL, fg=SUBTEXT,
+                         font=("Consolas", 11)).grid(row=1, column=col+1)
+
+        tk.Label(f, text="STEP 3 — Constraints  (choose type per row)",
+                 bg=PANEL, fg=ACCENT, font=("Consolas", 9, "bold")).grid(
+            row=3, column=0, columnspan=2*n+4, sticky="w", padx=4, pady=(12,2))
+
+        tk.Label(f, text="", bg=PANEL).grid(row=4, column=0)
+        for j in range(n):
+            tk.Label(f, text=f"x{j+1}", bg=PANEL, fg=SUBTEXT,
+                     font=("Consolas", 9)).grid(row=4, column=1+j*2)
+        tk.Label(f, text=" Type", bg=PANEL, fg=ACCENT2,
+                 font=("Consolas", 9, "bold")).grid(row=4, column=2*n+1)
+        tk.Label(f, text="  b", bg=PANEL, fg=ACCENT2,
+                 font=("Consolas", 9, "bold")).grid(row=4, column=2*n+2)
+
+        for i in range(m):
+            bg_r = PANEL if i%2==0 else PANEL2
+            tk.Label(f, text=f"R{i+1}", bg=bg_r, fg=SUBTEXT,
+                     font=("Consolas", 10)).grid(row=5+i, column=0, padx=5, pady=3)
+            row_e = []
+            for j in range(n):
+                col = 1+j*2
+                e = make_entry(f, width=5)
+                e.grid(row=5+i, column=col, padx=2, pady=3)
+                row_e.append(e)
+                if j < n-1:
+                    tk.Label(f, text="+", bg=bg_r, fg=SUBTEXT,
+                             font=("Consolas",10)).grid(row=5+i, column=col+1)
+            self.A_entries.append(row_e)
+
+            sv = tk.StringVar(value="≥")
+            self.sense_vars.append(sv)
+            om = tk.OptionMenu(f, sv, "≤","≥","=")
+            om.config(bg=PANEL2, fg=ACCENT2, activebackground=BORDER,
+                      activeforeground=ACCENT2, font=("Consolas",10,"bold"),
+                      relief="flat", bd=0, highlightthickness=1,
+                      highlightbackground=BORDER, width=3, cursor="hand2")
+            om["menu"].config(bg=PANEL2, fg=ACCENT2,
+                              activebackground=BORDER, activeforeground=ACCENT2,
+                              font=("Consolas",10))
+            om.grid(row=5+i, column=2*n+1, padx=6, pady=3)
+
+            b_e = make_entry(f, width=5)
+            b_e.grid(row=5+i, column=2*n+2, padx=3, pady=3)
+            self.b_entries.append(b_e)
+
+        styled_btn(f, "📋  Random Example", self._load_example,
+                   "#2e3357", width=18, pady=4).grid(
+            row=6+m, column=0, columnspan=2*n+4, pady=(12,4))
